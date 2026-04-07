@@ -1,4 +1,5 @@
 ## Hi there 👋
+The homepage renovation is still underway, so please stay tuned!
 
 <!--
 **Euswbnix/Euswbnix** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
