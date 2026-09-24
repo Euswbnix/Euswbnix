@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "10"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "11"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -141,7 +141,6 @@ def donut_svg(items, total, n_repos, theme):
     M = len(items); W = M + 1; step = 2.4; T = W * step
     sweep_end = 0.2 + 0.12 * M + 0.7
     px2deg = 360 / C
-    MOVE = 0.62                                            # 一次切换的时长
 
     segs, start = [], 0.0
     for it in items:
@@ -194,9 +193,16 @@ def donut_svg(items, total, n_repos, theme):
 
     rest_shape = lambda g: (g["span"], sw, sw, 0.0)
 
-    def swollen(a, b):                                      # 滑行中的胶囊:比圆环高得多、两端半圆
-        stretch = (a["span"] + b["span"]) / 2 + 0.35 * abs(b["mid"] - a["mid"]) + 8
-        return (stretch, sw + 24, sw + 28, 1.0)
+    def motion(a, b):
+        """一次切换的时长与形变幅度,随两块的距离和大小自动调整:走得远、块大 → 慢、鼓得大;
+        相邻小块之间 → 快、只轻微鼓起。时长 ∝ √距离(先加速后减速走一段路所需的时间)。"""
+        dist = abs(b["mid"] - a["mid"]); avg = (a["span"] + b["span"]) / 2
+        dur = min(0.75, max(0.28, 0.20 + 0.045 * math.sqrt(dist) + 0.0012 * avg))
+        boost = min(30.0, 8 + 0.25 * dist)                  # 中部加厚
+        pad = min(8.0, 2 + 0.06 * dist)                     # 两端外扩
+        cap = min(1.0, 0.3 + dist / 30)                     # 短距离不要鼓成大圆泡
+        swollen = (avg + 0.35 * dist + pad, sw + boost - 4, sw + boost, cap)
+        return dur, swollen
 
     EASE, HOLD, HUMP = "0.42 0 0.18 1", "0 0 1 1", "0.35 0 0.35 1"
     pos = [(0.0, segs[0]["mid"], HOLD)]                    # (时间, 中心角, 进入下一段用的曲线)
@@ -204,8 +210,9 @@ def donut_svg(items, total, n_repos, theme):
     opa = [(0.0, 0.0), (step, 0.0), (step + 0.2, 1.0)]    # 首次出现:直接淡入在 Java 上,不做缩放
     for k in range(1, M):
         a, b = segs[k - 1], segs[k]; t0 = (k + 1) * step
-        pos += [(t0, a["mid"], EASE), (t0 + MOVE, b["mid"], HOLD)]
-        shp += [(t0, rest_shape(a), HUMP), (t0 + MOVE * 0.45, swollen(a, b), HUMP), (t0 + MOVE, rest_shape(b), HOLD)]
+        dur, swollen = motion(a, b)
+        pos += [(t0, a["mid"], EASE), (t0 + dur, b["mid"], HOLD)]
+        shp += [(t0, rest_shape(a), HUMP), (t0 + dur * 0.45, swollen, HUMP), (t0 + dur, rest_shape(b), HOLD)]
     pos.append((T, segs[-1]["mid"], HOLD))
     shp.append((T, rest_shape(segs[-1]), HOLD))
     opa += [(T - 0.35, 1.0), (T, 0.0)]
