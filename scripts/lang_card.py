@@ -63,17 +63,18 @@ def collect(token):
         if not page["pageInfo"]["hasNextPage"]:
             break
         after = page["pageInfo"]["endCursor"]
-    langs, used = {}, 0
+    langs, used, used_private = {}, 0, 0
     for r in repos:
         if r["isFork"] or r["name"] in EXCLUDE:
             continue
         edges = r["languages"]["edges"]
         used += bool(edges)
+        used_private += bool(edges) and r["isPrivate"]
         for e in edges:
             d = langs.setdefault(e["node"]["name"], {"bytes": 0, "repos": 0, "private": 0,
                                                      "color": e["node"]["color"] or OTHER_COLOR})
             d["bytes"] += e["size"]; d["repos"] += 1; d["private"] += r["isPrivate"]
-    return owner, used, langs
+    return owner, used, used_private, langs
 
 
 def fmt_bytes(n):
@@ -228,9 +229,16 @@ def main():
         sys.exit("LANG_STATS_TOKEN not set")
     out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "dist"); out.mkdir(parents=True, exist_ok=True)
     readme = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else None
-    owner, n_repos, langs = collect(token)
+    owner, n_repos, n_private, langs = collect(token)
+    # A token scoped to public repos doesn't error — it just returns less. Refuse to shrink silently.
+    prev_path = os.environ.get("PREV_STATS")
+    if prev_path and os.path.exists(prev_path) and os.path.getsize(prev_path):
+        prev = json.load(open(prev_path, encoding="utf-8"))
+        if prev.get("private_repos", 0) > 0 and n_private == 0:
+            sys.exit(f"token sees no private repos (last run saw {prev['private_repos']}); "
+                     "check that it was created with 'All repositories'")
     total, items = build_items(langs)
-    stats = {"owner": owner, "repos": n_repos, "total_bytes": total,
+    stats = {"owner": owner, "repos": n_repos, "private_repos": n_private, "total_bytes": total,
              "items": [{k: v for k, v in it.items() if k != "members"} | ({"members": it["members"]} if "members" in it else {})
                        for it in items]}
     ver = hashlib.sha1((STYLE + json.dumps(stats, sort_keys=True)).encode()).hexdigest()[:8]
@@ -246,7 +254,7 @@ def main():
             sys.exit("README markers <!--LANGS:START--> / <!--LANGS:END--> not found")
         readme.write_text(s[:a] + readme_block(owner, items, n_repos, ver) + s[b + len("<!--LANGS:END-->"):],
                           encoding="utf-8")
-    print(f"{owner}: {n_repos} repos, {fmt_bytes(total)}, {len(items)} rows, v={ver}")
+    print(f"{owner}: {n_repos} repos ({n_private} private), {fmt_bytes(total)}, {len(items)} rows, v={ver}")
     for it in items:
         print(f"  {it['name']:12s} {it['pct']:5.1f}%  {tooltip(it)}")
 

@@ -44,15 +44,18 @@ jobs:
 
       - name: Language card
         env:
-          LANG_STATS_TOKEN: ${{ secrets.LANG_STATS_TOKEN }}
+          # 两个名字都认:LANG_STATS_TOKEN 是约定名,PROFILE 是当初实际建的名字
+          LANG_STATS_TOKEN: ${{ secrets.LANG_STATS_TOKEN || secrets.PROFILE }}
+          PREV_STATS: /tmp/prev-stats.json
         run: |
           mkdir -p dist
+          git fetch -q --depth 1 origin output && git show FETCH_HEAD:lang-stats.json > "$PREV_STATS" 2>/dev/null || true
           if [ -n "$LANG_STATS_TOKEN" ] && python3 scripts/lang_card.py dist README.md; then
             echo "语言图已按最新数据重新生成"
           else
-            echo "::warning::LANG_STATS_TOKEN 未配置或失效,沿用上一次的语言图"
-            git fetch -q --depth 1 origin output \
-              && git archive FETCH_HEAD | tar -x -C dist --wildcards 'lang-*' \
+            echo "::warning::语言图没有重新生成(token 未配置、失效或看不到私有仓库),沿用上一次的图"
+            git checkout -q -- README.md
+            git archive FETCH_HEAD | tar -x -C dist --wildcards 'lang-*' \
               || echo "::warning::output 分支里还没有语言图"
           fi
 
