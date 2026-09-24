@@ -1,14 +1,18 @@
 name: Profile assets
 
-# 每天生成贡献图动画(贪吃蛇 + 3D),统一推到 output 分支。
-# 生成物不进 main:output 分支每次强推成单个提交,仓库不会越来越大。
+# 每天生成主页上的动态图,统一推到 output 分支(每次强推成单个提交,仓库不会越来越大):
+#   贪吃蛇 + 3D 贡献图 —— 用 Actions 自带令牌即可
+#   语言占比图 —— 需要 LANG_STATS_TOKEN(只读 fine-grained token,能看到私有仓库的元数据);
+#                 没配或失效时沿用上一次生成的图,不影响其它图更新
 on:
   schedule:
     - cron: "17 0 * * *"
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [".github/workflows/profile-assets.yml"]
+    paths:
+      - ".github/workflows/profile-assets.yml"
+      - "scripts/lang_card.py"
 
 permissions:
   contents: write
@@ -22,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v7
+
       - name: Snake
         uses: Platane/snk/svg-only@v3
         with:
@@ -36,9 +42,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           USERNAME: ${{ github.repository_owner }}
 
-      - name: Collect
+      - name: Language card
+        env:
+          LANG_STATS_TOKEN: ${{ secrets.LANG_STATS_TOKEN }}
         run: |
           mkdir -p dist
+          if [ -n "$LANG_STATS_TOKEN" ] && python3 scripts/lang_card.py dist README.md; then
+            echo "语言图已按最新数据重新生成"
+          else
+            echo "::warning::LANG_STATS_TOKEN 未配置或失效,沿用上一次的语言图"
+            git fetch -q --depth 1 origin output \
+              && git archive FETCH_HEAD | tar -x -C dist --wildcards 'lang-*' \
+              || echo "::warning::output 分支里还没有语言图"
+          fi
+
+      - name: Collect
+        run: |
           cp profile-3d-contrib/profile-green-animate.svg dist/3d-light.svg
           cp profile-3d-contrib/profile-night-view.svg   dist/3d-dark.svg
           ls -la dist
@@ -52,3 +71,14 @@ jobs:
           jekyll: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 图先发布,README 后更新:避免 README 指向还不存在的新版本图
+      - name: Update README numbers
+        run: |
+          git diff --quiet -- README.md && { echo "README 无变化"; exit 0; }
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "chore: refresh language stats"
+          git pull --rebase -q origin main
+          git push -q origin HEAD:main
