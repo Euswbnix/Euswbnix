@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "1"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "2"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -93,6 +93,16 @@ def build_items(langs):
     return total, items
 
 
+def grow(attr, start, end, delay, dur):
+    """Animate attr from start to end after `delay`, starting at t=0 so there is no flash of the
+    final state; the element's own attribute already holds `end`, so renderers that skip SMIL
+    (mobile apps, link previews) still show the finished chart."""
+    total = delay + dur
+    return (f'<animate attributeName="{attr}" values="{start};{start};{end}" '
+            f'keyTimes="0;{delay / total:.4f};1" dur="{total:.2f}s" begin="0s" fill="freeze" '
+            f'calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/>')
+
+
 def keyframes(windows, on, off, e):
     """SMIL values/keyTimes: `on` inside each [a,b] window (fading over e), `off` elsewhere."""
     merged = []
@@ -133,10 +143,8 @@ def donut_svg(items, total, n_repos, theme):
         wv, wkt = keyframes([(a, b)], sw + 12, sw, e)
         out.append(
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{it["color"]}" stroke-width="{sw}" '
-            f'stroke-dasharray="0 {C:.2f}" transform="rotate({rot:.3f} {cx} {cy})">'
-            f'<animate attributeName="stroke-dasharray" from="0 {C:.2f}" to="{dash:.2f} {C:.2f}" '
-            f'dur="0.7s" begin="{0.2 + 0.12 * (k - 1):.2f}s" fill="freeze" calcMode="spline" '
-            f'keyTimes="0;1" keySplines="0.2 0.8 0.2 1"/>'
+            f'stroke-dasharray="{dash:.2f} {C:.2f}" transform="rotate({rot:.3f} {cx} {cy})">'
+            + grow("stroke-dasharray", f"0 {C:.2f}", f"{dash:.2f} {C:.2f}", 0.2 + 0.12 * (k - 1), 0.7) +
             f'<animate attributeName="stroke-opacity" values="{ov}" keyTimes="{okt}" dur="{T:.1f}s" '
             f'begin="{begin}" repeatCount="indefinite"/>'
             f'<animate attributeName="stroke-width" values="{wv}" keyTimes="{wkt}" dur="{T:.1f}s" '
@@ -177,9 +185,8 @@ def row_svg(it, rank, max_pct, theme):
             f'<circle cx="10" cy="15" r="6" fill="{it["color"]}"/>'
             f'<text x="24" y="20" font-size="14" font-weight="600" fill="{c["fg"]}">{html.escape(name)}</text>'
             f'<rect x="{bx}" y="11" width="{bw}" height="8" rx="4" fill="{c["track"]}"/>'
-            f'<rect x="{bx}" y="11" width="0" height="8" rx="4" fill="{it["color"]}">'
-            f'<animate attributeName="width" from="0" to="{fill:.2f}" dur="0.9s" begin="{d:.2f}s" fill="freeze" '
-            f'calcMode="spline" keyTimes="0;1" keySplines="0.2 0.8 0.2 1"/></rect>'
+            f'<rect x="{bx}" y="11" width="{fill:.2f}" height="8" rx="4" fill="{it["color"]}">'
+            + grow("width", "0", f"{fill:.2f}", d, 0.9) + '</rect>'
             f'<text x="436" y="20" text-anchor="end" font-size="14" font-weight="700" '
             f'fill="{c["fg"]}">{it["pct"]:.1f}%</text></svg>')
 
