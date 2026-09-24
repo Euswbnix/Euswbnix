@@ -2,7 +2,7 @@
 
 <p align="center">
   Applied Statistics Specialist &amp; Applied Mathematics Major · University of Toronto (2023 – 2027)<br/>
-  <em>NLP · probabilistic modeling · building models from scratch and measuring them honestly</em>
+  <em>NLP · CV · Constructing and optimizing model architectures</em>
 </p>
 
 <p align="center">
