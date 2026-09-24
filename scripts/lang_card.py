@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "11"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "12"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -297,7 +297,6 @@ def row_svg(it, rank, max_pct, theme):
             f'font-family="{FONT}" role="img" aria-label="{html.escape(name)} {it["pct"]:.1f}%">'
             f'<circle cx="10" cy="15" r="6" fill="{it["color"]}"/>'
             f'<text x="24" y="20" font-size="14" font-weight="600" fill="{c["fg"]}">{html.escape(name)}</text>'
-            f'<rect x="{bx}" y="11" width="{bw}" height="8" rx="4" fill="{c["track"]}"/>'
             f'<rect x="{bx}" y="11" width="{fill:.2f}" height="8" rx="4" fill="{it["color"]}">'
             + grow("width", "0", f"{fill:.2f}", d, 0.9) + '</rect>'
             f'<text x="436" y="20" text-anchor="end" font-size="14" font-weight="700" '
