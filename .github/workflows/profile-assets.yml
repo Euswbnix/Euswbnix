@@ -12,7 +12,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/profile-assets.yml"
-      - "scripts/lang_card.py"
+      - "scripts/**"
 
 permissions:
   contents: write
@@ -63,6 +63,9 @@ jobs:
         run: |
           cp profile-3d-contrib/profile-green-animate.svg dist/3d-light.svg
           cp profile-3d-contrib/profile-night-view.svg   dist/3d-dark.svg
+          # 3D 图自带的语言饼图只算公开仓库,设置里又关不掉;主页已有自己的语言图,把它删掉
+          python3 scripts/strip_3d_pie.py dist/3d-light.svg dist/3d-dark.svg \
+            || echo "::warning::3D 图里没找到饼图(组件结构可能变了),本次保留原图"
           ls -la dist
 
       - name: Publish to output branch
