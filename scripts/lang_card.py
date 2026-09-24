@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "5"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "6"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -149,20 +149,29 @@ def donut_svg(items, total, n_repos, theme):
         segs.append(dict(s=-90 + start * px2deg, span=dash * px2deg))
         start += seg
 
-    # 关键帧:(时间, 起点角, 长度角, 不透明度)
+    # 关键帧:(时间, 起点角, 长度角, 厚度, 不透明度)
+    # iOS 工具栏式:原位"拿起"(变厚+两端外扩)→ 放大状态下滑过去 → 到位"放下",精确缩回扇区大小
+    BIG, PAD = sw + 12, 4.0                              # 拿起时的厚度 / 两端各外扩的角度
+
     def rest(g, t, o=1.0):
-        return (t, g["s"], g["span"], o)
-    kf = [rest(segs[0], 0.0, 0.0), rest(segs[0], step, 0.0), rest(segs[0], step + 0.35)]
+        return (t, g["s"], g["span"], sw, o)
+
+    def lifted(g, t, o=1.0):
+        return (t, g["s"] - PAD, g["span"] + 2 * PAD, BIG, o)
+
+    kf = [rest(segs[0], 0.0, 0.0), rest(segs[0], step, 0.0),
+          lifted(segs[0], step + 0.22), rest(segs[0], step + 0.5)]              # 首次出现:弹一下再贴合
     for k in range(1, M):
         a, b = segs[k - 1], segs[k]; t0 = (k + 1) * step
         a_end, b_end = a["s"] + a["span"], b["s"] + b["span"]
-        ov = min(4.0, 0.15 * b["span"] + 1.0)           # 前沿越过终点的角度
-        lag = a["s"] + 0.25 * (b["s"] - a["s"])          # 后沿滞后的位置
-        back = b["s"] + min(2.5, 0.1 * b["span"] + 0.5)  # 后沿追过头一点
+        s_mid = a["s"] + 0.35 * (b["s"] - a["s"]) - PAD       # 途中:后沿慢、前沿快,略带拉伸
+        e_mid = a_end + 0.65 * (b_end - a_end) + PAD
+        ov = min(2.5, 0.08 * b["span"] + 0.8)                 # 落点略越过
         kf += [rest(a, t0),
-               (t0 + 0.20, lag, b_end + ov - lag, 1.0),                  # 前沿冲出去,后沿拖着 → 拉长
-               (t0 + 0.38, back, b_end + ov * 0.25 - back, 1.0),         # 后沿追上并略过头
-               rest(b, t0 + 0.56)]                                        # 两端精确落回新扇区
+               lifted(a, t0 + 0.14),                           # 拿起
+               (t0 + 0.30, s_mid, e_mid - s_mid, BIG, 1.0),    # 放大状态下滑行
+               (t0 + 0.44, b["s"] - PAD + ov, b["span"] + 2 * PAD, BIG - 2, 1.0),   # 到位前略过头
+               rest(b, t0 + 0.62)]                             # 放下:精确贴合
     kf += [rest(segs[-1], T - 0.35), rest(segs[-1], T, 0.0)]
     kt = ";".join(f"{t / T:.5f}" for t, *_ in kf)
     spl = ";".join(["0.3 0 0.2 1"] * (len(kf) - 1))
@@ -172,14 +181,16 @@ def donut_svg(items, total, n_repos, theme):
     def lens(width, extra="", inset_px=0.0):
         """与扇区同画法的镜片;inset_px 从两端各收进去一点(用来做描边内圈)。"""
         ins = inset_px * px2deg
-        rot = ";".join(f"{s + ins:.3f} {cx} {cy}" for _, s, _, _ in kf)
-        dsh = ";".join(f"{max(sp - 2 * ins, 0.05) / px2deg:.2f} {C:.2f}" for _, _, sp, _ in kf)
+        rot = ";".join(f"{s + ins:.3f} {cx} {cy}" for _, s, _, _, _ in kf)
+        dsh = ";".join(f"{max(sp - 2 * ins, 0.05) / px2deg:.2f} {C:.2f}" for _, _, sp, _, _ in kf)
+        wid = ";".join(f"{w + (width - sw):.2f}" for _, _, _, w, _ in kf)   # 厚度随关键帧变,保持与 sw 的差值
         s0, sp0 = kf[0][1] + ins, max(kf[0][2] - 2 * ins, 0.05)
         return (f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke-width="{width}" '
                 f'stroke-dasharray="{sp0 / px2deg:.2f} {C:.2f}" transform="rotate({s0:.3f} {cx} {cy})" {extra}>'
                 f'<animateTransform attributeName="transform" type="rotate" values="{rot}" calcMode="spline" '
                 f'keySplines="{spl}" {timing}/>'
                 f'<animate attributeName="stroke-dasharray" values="{dsh}" calcMode="spline" keySplines="{spl}" {timing}/>'
+                f'<animate attributeName="stroke-width" values="{wid}" calcMode="spline" keySplines="{spl}" {timing}/>'
                 '</circle>')
 
     op = ";".join(f"{o}" for *_, o in kf)
@@ -208,7 +219,7 @@ def donut_svg(items, total, n_repos, theme):
                      + '</circle>')
         out.append(rings[-1]); start += seg
     out.append('</g>')
-    thick = "".join(t.replace(f'stroke-width="{sw}"', f'stroke-width="{sw + 7}"').split("<animate")[0] + "</circle>"
+    thick = "".join(t.replace(f'stroke-width="{sw}"', f'stroke-width="{BIG + 2}"').split("<animate")[0] + "</circle>"
                     for t in rings)
     # 投影 → 折射副本(加粗+饱和+微模糊)→ 玻璃着色 → 细描边;整组一起淡入淡出
     out.append(f'<g opacity="0"><animate attributeName="opacity" values="{op}" {timing}/>'
