@@ -31,7 +31,7 @@ jobs:
             dist/snake-dark.svg?palette=github-dark
 
       - name: 3D contributions
-        uses: yoshi389111/github-profile-3d-contrib@0.7.2
+        uses: yoshi389111/github-profile-3d-contrib@v0.9.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           USERNAME: ${{ github.repository_owner }}
@@ -44,7 +44,7 @@ jobs:
           ls -la dist
 
       - name: Publish to output branch
-        uses: crazy-max/ghaction-github-pages@v4
+        uses: crazy-max/ghaction-github-pages@v5
         with:
           target_branch: output
           build_dir: dist
