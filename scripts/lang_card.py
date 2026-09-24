@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "6"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "8"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -128,12 +128,13 @@ def keyframes(windows, on, off, e):
 def donut_svg(items, total, n_repos, theme):
     """Donut with a liquid-glass lens that moves segment to segment.
 
-    At rest the lens is drawn exactly like the segment it sits on (same circle, same stroke
-    width, butt ends, same start and length), so it covers it pixel for pixel. Moving to the
-    next segment the leading edge runs ahead and slightly past the target while the trailing
-    edge lags (the stretch), then both settle on the target's exact edges. Under the lens a
-    thicker, slightly saturated copy of the ring shows through; a soft shadow and a thin rim
-    finish the glass. The copy is static and only the mask moves, so the filter can be cached.
+    The lens is a path (6 cubic Béziers, same structure in every keyframe, so SMIL can morph it).
+    At rest it is the exact annular sector of the segment under it — same radii, same start and
+    length — so it covers it pixel for pixel. To move, like the iOS tab-bar selection it lifts:
+    the middle swells well past the ring on both sides (edges no longer concentric), the ends
+    round off, it slides along the ring slightly stretched, overshoots a touch and settles back to
+    the exact sector. Inside, a magnified copy of the ring (a band narrower than the swollen lens)
+    shows through, so the glass above and below the band is visible; shadow + rim define the edge.
     """
     c = THEMES[theme]; dark = theme == "-dark"
     cx = cy = 160; r = 110; sw = 34; C = 2 * math.pi * r
@@ -141,59 +142,98 @@ def donut_svg(items, total, n_repos, theme):
     sweep_end = 0.2 + 0.12 * M + 0.7
     px2deg = 360 / C
 
-    # 每个扇区实际画出来的起点和长度(度),与下面画扇区用的是同一套算法
     segs, start = [], 0.0
     for it in items:
         seg = it["pct"] / 100 * C
-        dash = max(seg - 2.0, 0.6)                      # 扇区之间留 2px 缝
+        dash = max(seg - 2.0, 0.6)                       # 与下面画扇区完全同一算法
         segs.append(dict(s=-90 + start * px2deg, span=dash * px2deg))
         start += seg
 
-    # 关键帧:(时间, 起点角, 长度角, 厚度, 不透明度)
-    # iOS 工具栏式:原位"拿起"(变厚+两端外扩)→ 放大状态下滑过去 → 到位"放下",精确缩回扇区大小
-    BIG, PAD = sw + 12, 4.0                              # 拿起时的厚度 / 两端各外扩的角度
+    # ---- 形状:画布坐标下从角度 0 到 span 的镜片;h_end/h_mid 端部/中部厚度,cap 0=平头 1=圆头
+    def shape(span, h_end, h_mid, cap):
+        a1 = math.radians(max(span, 0.05))
+
+        def R(a, re, rm):
+            return re + (rm - re) * math.sin(math.pi * a / a1)
+
+        def dR(a, re, rm):
+            return (rm - re) * math.pi / a1 * math.cos(math.pi * a / a1)
+
+        def P(a, rad):
+            return (cx + rad * math.cos(a), cy + rad * math.sin(a))
+
+        def edge(re, rm, a0, a3):
+            da = a3 - a0
+            f = (4 / 3) * math.tan(da / 4) / da          # 圆弧精确的控制柄比例
+            p0, p3 = P(a0, R(a0, re, rm)), P(a3, R(a3, re, rm))
+            def d(a):
+                rr, dr = R(a, re, rm), dR(a, re, rm)
+                return (dr * math.cos(a) - rr * math.sin(a), dr * math.sin(a) + rr * math.cos(a))
+            d0, d3 = d(a0), d(a3)
+            p1 = (p0[0] + d0[0] * f * da, p0[1] + d0[1] * f * da)
+            p2 = (p3[0] - d3[0] * f * da, p3[1] - d3[1] * f * da)
+            return p1, p2, p3
+
+        def capc(pa, pb, tang, h):
+            k = 0.667 * h * cap                           # 圆头控制柄
+            s3 = ((pb[0] - pa[0]) / 3 * (1 - cap), (pb[1] - pa[1]) / 3 * (1 - cap))
+            c1 = (pa[0] + s3[0] + tang[0] * k, pa[1] + s3[1] + tang[1] * k)
+            c2 = (pb[0] - s3[0] + tang[0] * k, pb[1] - s3[1] + tang[1] * k)
+            return c1, c2, pb
+
+        ro_e, ro_m, ri_e, ri_m = r + h_end / 2, r + h_mid / 2, r - h_end / 2, r - h_mid / 2
+        o0 = P(0, ro_e)
+        segs_ = [edge(ro_e, ro_m, 0, a1 / 2), edge(ro_e, ro_m, a1 / 2, a1)]
+        o1, i1 = P(a1, ro_e), P(a1, ri_e)
+        segs_.append(capc(o1, i1, (-math.sin(a1), math.cos(a1)), h_end))
+        segs_ += [edge(ri_e, ri_m, a1, a1 / 2), edge(ri_e, ri_m, a1 / 2, 0)]
+        segs_.append(capc(P(0, ri_e), o0, (0.0, -1.0), h_end))
+        fmt = lambda p: f"{p[0]:.2f},{p[1]:.2f}"
+        return f"M{fmt(o0)}" + "".join(f"C{fmt(a)} {fmt(b)} {fmt(e)}" for a, b, e in segs_) + "Z"
+
+    # ---- 关键帧:(时间, 起点角, 长度角, 端部厚, 中部厚, 圆头, 不透明度, 玻璃程度)
+    # 参考 iOS:移动时是比条更高的透明胶囊(两端半圆、上下近平行),静止时贴合选中项
+    PAD = 5.0
 
     def rest(g, t, o=1.0):
-        return (t, g["s"], g["span"], sw, o)
+        return (t, g["s"], g["span"], sw, sw, 0.0, o, 0.0)
 
     def lifted(g, t, o=1.0):
-        return (t, g["s"] - PAD, g["span"] + 2 * PAD, BIG, o)
+        return (t, g["s"] - PAD, g["span"] + 2 * PAD, sw + 22, sw + 26, 1.0, o, 1.0)
 
     kf = [rest(segs[0], 0.0, 0.0), rest(segs[0], step, 0.0),
-          lifted(segs[0], step + 0.22), rest(segs[0], step + 0.5)]              # 首次出现:弹一下再贴合
+          lifted(segs[0], step + 0.24), rest(segs[0], step + 0.56)]            # 首次出现:鼓一下再贴合
     for k in range(1, M):
         a, b = segs[k - 1], segs[k]; t0 = (k + 1) * step
         a_end, b_end = a["s"] + a["span"], b["s"] + b["span"]
-        s_mid = a["s"] + 0.35 * (b["s"] - a["s"]) - PAD       # 途中:后沿慢、前沿快,略带拉伸
+        s_mid = a["s"] + 0.35 * (b["s"] - a["s"]) - PAD
         e_mid = a_end + 0.65 * (b_end - a_end) + PAD
-        ov = min(2.5, 0.08 * b["span"] + 0.8)                 # 落点略越过
+        ov = min(2.5, 0.08 * b["span"] + 0.8)
         kf += [rest(a, t0),
-               lifted(a, t0 + 0.14),                           # 拿起
-               (t0 + 0.30, s_mid, e_mid - s_mid, BIG, 1.0),    # 放大状态下滑行
-               (t0 + 0.44, b["s"] - PAD + ov, b["span"] + 2 * PAD, BIG - 2, 1.0),   # 到位前略过头
-               rest(b, t0 + 0.62)]                             # 放下:精确贴合
+               lifted(a, t0 + 0.14),                                               # 原地鼓起
+               (t0 + 0.32, s_mid, e_mid - s_mid, sw + 26, sw + 30, 1.0, 1.0, 1.0),  # 胶囊状态滑行,略拉伸
+               (t0 + 0.47, b["s"] - PAD + ov, b["span"] + 2 * PAD, sw + 14, sw + 18, 0.8, 1.0, 0.6),  # 略过头、开始回收
+               rest(b, t0 + 0.66)]                                                 # 精确贴合
     kf += [rest(segs[-1], T - 0.35), rest(segs[-1], T, 0.0)]
+
     kt = ";".join(f"{t / T:.5f}" for t, *_ in kf)
     spl = ";".join(["0.3 0 0.2 1"] * (len(kf) - 1))
     begin = f"{sweep_end:.2f}s"
     timing = f'keyTimes="{kt}" dur="{T:.1f}s" begin="{begin}" repeatCount="indefinite"'
+    rot_v = ";".join(f"{s:.3f} {cx} {cy}" for _, s, *_ in kf)
+    d_v = ";".join(shape(sp, he, hm, cp) for _, _, sp, he, hm, cp, _, _ in kf)
+    d0 = shape(kf[0][2], kf[0][3], kf[0][4], kf[0][5])
 
-    def lens(width, extra="", inset_px=0.0):
-        """与扇区同画法的镜片;inset_px 从两端各收进去一点(用来做描边内圈)。"""
-        ins = inset_px * px2deg
-        rot = ";".join(f"{s + ins:.3f} {cx} {cy}" for _, s, _, _, _ in kf)
-        dsh = ";".join(f"{max(sp - 2 * ins, 0.05) / px2deg:.2f} {C:.2f}" for _, _, sp, _, _ in kf)
-        wid = ";".join(f"{w + (width - sw):.2f}" for _, _, _, w, _ in kf)   # 厚度随关键帧变,保持与 sw 的差值
-        s0, sp0 = kf[0][1] + ins, max(kf[0][2] - 2 * ins, 0.05)
-        return (f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke-width="{width}" '
-                f'stroke-dasharray="{sp0 / px2deg:.2f} {C:.2f}" transform="rotate({s0:.3f} {cx} {cy})" {extra}>'
-                f'<animateTransform attributeName="transform" type="rotate" values="{rot}" calcMode="spline" '
+    lens_def = (f'<path id="lensShape" d="{d0}" transform="rotate({kf[0][1]:.3f} {cx} {cy})">'
+                f'<animateTransform attributeName="transform" type="rotate" values="{rot_v}" calcMode="spline" '
                 f'keySplines="{spl}" {timing}/>'
-                f'<animate attributeName="stroke-dasharray" values="{dsh}" calcMode="spline" keySplines="{spl}" {timing}/>'
-                f'<animate attributeName="stroke-width" values="{wid}" calcMode="spline" keySplines="{spl}" {timing}/>'
-                '</circle>')
+                f'<animate attributeName="d" values="{d_v}" calcMode="spline" keySplines="{spl}" {timing}/></path>')
 
-    op = ";".join(f"{o}" for *_, o in kf)
+    def lens(extra):
+        return f'<use href="#lensShape" {extra}/>'
+
+    op = ";".join(f"{x[6]}" for x in kf)
+    gl = ";".join(f"{x[7]}" for x in kf)
     tint = "#ffffff" if not dark else "#cfe3ff"
     full = 'maskUnits="userSpaceOnUse" x="0" y="0" width="320" height="320"'
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" '
@@ -204,10 +244,9 @@ def donut_svg(items, total, n_repos, theme):
            '<feComponentTransfer><feFuncR type="linear" slope="1.05"/><feFuncG type="linear" slope="1.05"/>'
            '<feFuncB type="linear" slope="1.05"/></feComponentTransfer></filter>',
            '<filter id="shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="320" height="320">'
-           '<feGaussianBlur stdDeviation="3"/></filter>',
-           f'<mask id="lens" {full}>' + lens(sw, 'stroke="#fff"') + '</mask>',
-           # 描边:外圈(与扇区同大)减去内圈(四边各收 1.6px)
-           f'<mask id="rimMask" {full}>' + lens(sw, 'stroke="#fff"') + lens(sw - 3.2, 'stroke="#000"', 1.6) + '</mask>',
+           '<feGaussianBlur stdDeviation="4"/></filter>',
+           lens_def,
+           f'<mask id="lens" {full}>' + lens('fill="#fff"') + '</mask>',
            '</defs>',
            '<g id="ring">']
     start = 0.0; rings = []
@@ -219,16 +258,23 @@ def donut_svg(items, total, n_repos, theme):
                      + '</circle>')
         out.append(rings[-1]); start += seg
     out.append('</g>')
-    thick = "".join(t.replace(f'stroke-width="{sw}"', f'stroke-width="{BIG + 2}"').split("<animate")[0] + "</circle>"
-                    for t in rings)
-    # 投影 → 折射副本(加粗+饱和+微模糊)→ 玻璃着色 → 细描边;整组一起淡入淡出
+    # 放大后的圆环色带:比静止扇区宽(放大感),又比鼓起的镜片窄(露出上下的玻璃)
+    band = "".join(t.replace(f'stroke-width="{sw}"', f'stroke-width="{sw + 10}"').split("<animate")[0] + "</circle>"
+                   for t in rings)
+    edge_dark = "#000" if not dark else "#fff"
     out.append(f'<g opacity="0"><animate attributeName="opacity" values="{op}" {timing}/>'
-               f'<g transform="translate(0 2)" filter="url(#shadow)" opacity="{0.28 if not dark else 0.55}">'
-               + lens(sw, 'stroke="#000"') + '</g>'
-               '<g mask="url(#lens)"><g filter="url(#glass)">' + thick + '</g>'
-               f'<rect width="320" height="320" fill="{tint}" opacity="{0.18 if not dark else 0.12}"/></g>'
-               f'<rect width="320" height="320" fill="#fff" opacity="{0.85 if not dark else 0.6}" mask="url(#rimMask)"/>'
-               '</g>')
+               f'<g transform="translate(0 3)" filter="url(#shadow)" opacity="{0.24 if not dark else 0.55}">'
+               + lens('fill="#000"') + '</g>'
+               '<g mask="url(#lens)">'
+               f'<rect width="320" height="320" fill="{tint}" opacity="{0.55 if not dark else 0.10}"/>'
+               '<g filter="url(#glass)">' + band + '</g>'
+               f'<rect width="320" height="320" fill="{tint}" opacity="{0.16 if not dark else 0.10}"/></g>'
+               + lens(f'fill="none" stroke="{edge_dark}" stroke-opacity="{0.16 if not dark else 0.30}" stroke-width="2"')
+               + f'<g opacity="0"><animate attributeName="opacity" values="{gl}" calcMode="spline" keySplines="{spl}" {timing}/>'
+               + lens('fill="none" stroke="#6ea8ff" stroke-opacity="0.45" stroke-width="4.5"')
+               + lens('fill="none" stroke="#ff8fb1" stroke-opacity="0.40" stroke-width="2.6"') + '</g>'
+               + lens(f'fill="none" stroke="#fff" stroke-opacity="{0.9 if not dark else 0.6}" stroke-width="1"')
+               + '</g>')
     e = 0.25 / T
 
     def label(title, big, sub, dot, windows, base):
