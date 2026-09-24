@@ -16,14 +16,14 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "2"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "3"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
 THEMES = {
-    "":      {"fg": "#1f2328", "muted": "#59636e", "track": "#eaeef2", "dim": 0.35},
-    "-dark": {"fg": "#e6edf3", "muted": "#9198a1", "track": "#262c36", "dim": 0.45},
+    "":      {"fg": "#1f2328", "muted": "#59636e", "track": "#eaeef2", "dim": 0.8, "halo": 0.4},
+    "-dark": {"fg": "#e6edf3", "muted": "#9198a1", "track": "#262c36", "dim": 0.75, "halo": 0.5},
 }
 LINKS = {
     "Java": "https://dev.java", "Python": "https://www.python.org",
@@ -133,7 +133,11 @@ def donut_svg(items, total, n_repos, theme):
     sweep_end = 0.2 + 0.12 * len(items) + 0.7
     begin = f"{sweep_end:.2f}s"
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" '
-           f'font-family="{FONT}" role="img" aria-label="Language share">']
+           f'font-family="{FONT}" role="img" aria-label="Language share">'
+           # userSpaceOnUse: the default filter region is the circle's bbox + 10%, which clips a wide glow
+           '<defs><filter id="halo" filterUnits="userSpaceOnUse" x="0" y="0" width="320" height="320">'
+           '<feGaussianBlur stdDeviation="6"/></filter></defs>']
+    halos, segs = [], []
     start = 0.0
     for k, it in enumerate(items, 1):
         seg = it["pct"] / 100 * C
@@ -141,8 +145,16 @@ def donut_svg(items, total, n_repos, theme):
         rot = -90 + start / C * 360
         a, b = k / W, (k + 1) / W
         ov, okt = keyframes([(0, 1 / W), (a, b)], 1, c["dim"], e)
-        wv, wkt = keyframes([(a, b)], sw + 12, sw, e)
-        out.append(
+        wv, wkt = keyframes([(a, b)], sw + 6, sw, e)
+        hv, hkt = keyframes([(a, b)], c["halo"], 0, e)
+        # soft same-colour glow behind the active segment; drawn first so it sits underneath
+        halos.append(
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{it["color"]}" stroke-width="{sw + 22}" '
+            f'stroke-dasharray="{dash:.2f} {C:.2f}" transform="rotate({rot:.3f} {cx} {cy})" '
+            f'filter="url(#halo)" opacity="0">'
+            f'<animate attributeName="opacity" values="{hv}" keyTimes="{hkt}" dur="{T:.1f}s" '
+            f'begin="{begin}" repeatCount="indefinite"/></circle>')
+        segs.append(
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{it["color"]}" stroke-width="{sw}" '
             f'stroke-dasharray="{dash:.2f} {C:.2f}" transform="rotate({rot:.3f} {cx} {cy})">'
             + grow("stroke-dasharray", f"0 {C:.2f}", f"{dash:.2f} {C:.2f}", 0.2 + 0.12 * (k - 1), 0.7) +
@@ -151,6 +163,7 @@ def donut_svg(items, total, n_repos, theme):
             f'<animate attributeName="stroke-width" values="{wv}" keyTimes="{wkt}" dur="{T:.1f}s" '
             f'begin="{begin}" repeatCount="indefinite"/></circle>')
         start += seg
+    out += halos + segs
 
     def label(title, big, sub, dot, windows, base):
         v, kt = keyframes(windows, 1, 0, e)
