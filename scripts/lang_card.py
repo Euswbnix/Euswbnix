@@ -16,7 +16,7 @@ Env: LANG_STATS_TOKEN (or GH_TOKEN) — needs read access to repository metadata
 import hashlib, html, json, math, os, pathlib, sys, urllib.request
 
 TOP_N = 10
-STYLE = "8"  # bump when the SVG design changes, so GitHub's image cache refreshes
+STYLE = "10"  # bump when the SVG design changes, so GitHub's image cache refreshes
 EXCLUDE = {"DouYinSparkFlow-Auto"} | {x for x in os.environ.get("LANG_EXCLUDE", "").split(",") if x}
 RAW = "https://raw.githubusercontent.com/{owner}/{owner}/output/{name}"
 OTHER_COLOR = "#8b949e"
@@ -126,32 +126,34 @@ def keyframes(windows, on, off, e):
 
 
 def donut_svg(items, total, n_repos, theme):
-    """Donut with a liquid-glass lens that moves segment to segment.
+    """Donut with a liquid-glass lens that moves segment to segment (modelled on the iOS tab bar).
 
-    The lens is a path (6 cubic Béziers, same structure in every keyframe, so SMIL can morph it).
-    At rest it is the exact annular sector of the segment under it — same radii, same start and
-    length — so it covers it pixel for pixel. To move, like the iOS tab-bar selection it lifts:
-    the middle swells well past the ring on both sides (edges no longer concentric), the ends
-    round off, it slides along the ring slightly stretched, overshoots a touch and settles back to
-    the exact sector. Inside, a magnified copy of the ring (a band narrower than the swollen lens)
-    shows through, so the glass above and below the band is visible; shadow + rim define the edge.
+    At rest the lens is the exact annular sector of the selected segment. To move, the lens centre
+    glides along the ring in one smooth ease-in-out while, independently, the shape swells into a
+    clear capsule much taller than the ring (round ends, near-parallel sides) and shrinks back to the
+    exact target sector. Position and shape are separate animations with few keyframes each, so
+    velocity never stalls mid-move. Inside the lens a magnified band of the ring (pre-computed,
+    slightly richer colours) shows through; the edge is a thin translucent highlight. No filters,
+    and a clipPath instead of a mask, so each frame only re-rasterises one morphing path.
     """
     c = THEMES[theme]; dark = theme == "-dark"
     cx = cy = 160; r = 110; sw = 34; C = 2 * math.pi * r
     M = len(items); W = M + 1; step = 2.4; T = W * step
     sweep_end = 0.2 + 0.12 * M + 0.7
     px2deg = 360 / C
+    MOVE = 0.62                                            # 一次切换的时长
 
     segs, start = [], 0.0
     for it in items:
         seg = it["pct"] / 100 * C
-        dash = max(seg - 2.0, 0.6)                       # 与下面画扇区完全同一算法
-        segs.append(dict(s=-90 + start * px2deg, span=dash * px2deg))
+        dash = max(seg - 2.0, 0.6)                          # 与下面画扇区完全同一算法
+        s0 = -90 + start * px2deg; sp = dash * px2deg
+        segs.append(dict(s=s0, span=sp, mid=s0 + sp / 2))
         start += seg
 
-    # ---- 形状:画布坐标下从角度 0 到 span 的镜片;h_end/h_mid 端部/中部厚度,cap 0=平头 1=圆头
+    # ---- 形状:以角度 0 为中心、从 -span/2 到 +span/2;h_end/h_mid 端部/中部厚度,cap 0=平头 1=半圆头
     def shape(span, h_end, h_mid, cap):
-        a1 = math.radians(max(span, 0.05))
+        a1 = math.radians(max(span, 0.05)); off = -a1 / 2
 
         def R(a, re, rm):
             return re + (rm - re) * math.sin(math.pi * a / a1)
@@ -160,121 +162,102 @@ def donut_svg(items, total, n_repos, theme):
             return (rm - re) * math.pi / a1 * math.cos(math.pi * a / a1)
 
         def P(a, rad):
-            return (cx + rad * math.cos(a), cy + rad * math.sin(a))
+            return (cx + rad * math.cos(a + off), cy + rad * math.sin(a + off))
 
         def edge(re, rm, a0, a3):
             da = a3 - a0
-            f = (4 / 3) * math.tan(da / 4) / da          # 圆弧精确的控制柄比例
+            f = (4 / 3) * math.tan(da / 4) / da             # 圆弧精确的控制柄比例
             p0, p3 = P(a0, R(a0, re, rm)), P(a3, R(a3, re, rm))
+
             def d(a):
-                rr, dr = R(a, re, rm), dR(a, re, rm)
-                return (dr * math.cos(a) - rr * math.sin(a), dr * math.sin(a) + rr * math.cos(a))
+                rr, dr, th = R(a, re, rm), dR(a, re, rm), a + off
+                return (dr * math.cos(th) - rr * math.sin(th), dr * math.sin(th) + rr * math.cos(th))
             d0, d3 = d(a0), d(a3)
-            p1 = (p0[0] + d0[0] * f * da, p0[1] + d0[1] * f * da)
-            p2 = (p3[0] - d3[0] * f * da, p3[1] - d3[1] * f * da)
-            return p1, p2, p3
+            return ((p0[0] + d0[0] * f * da, p0[1] + d0[1] * f * da),
+                    (p3[0] - d3[0] * f * da, p3[1] - d3[1] * f * da), p3)
 
         def capc(pa, pb, tang, h):
-            k = 0.667 * h * cap                           # 圆头控制柄
+            k = 0.667 * h * cap
             s3 = ((pb[0] - pa[0]) / 3 * (1 - cap), (pb[1] - pa[1]) / 3 * (1 - cap))
-            c1 = (pa[0] + s3[0] + tang[0] * k, pa[1] + s3[1] + tang[1] * k)
-            c2 = (pb[0] - s3[0] + tang[0] * k, pb[1] - s3[1] + tang[1] * k)
-            return c1, c2, pb
+            return ((pa[0] + s3[0] + tang[0] * k, pa[1] + s3[1] + tang[1] * k),
+                    (pb[0] - s3[0] + tang[0] * k, pb[1] - s3[1] + tang[1] * k), pb)
 
         ro_e, ro_m, ri_e, ri_m = r + h_end / 2, r + h_mid / 2, r - h_end / 2, r - h_mid / 2
+        te, ts = a1 + off, off
         o0 = P(0, ro_e)
-        segs_ = [edge(ro_e, ro_m, 0, a1 / 2), edge(ro_e, ro_m, a1 / 2, a1)]
-        o1, i1 = P(a1, ro_e), P(a1, ri_e)
-        segs_.append(capc(o1, i1, (-math.sin(a1), math.cos(a1)), h_end))
-        segs_ += [edge(ri_e, ri_m, a1, a1 / 2), edge(ri_e, ri_m, a1 / 2, 0)]
-        segs_.append(capc(P(0, ri_e), o0, (0.0, -1.0), h_end))
+        parts = [edge(ro_e, ro_m, 0, a1 / 2), edge(ro_e, ro_m, a1 / 2, a1),
+                 capc(P(a1, ro_e), P(a1, ri_e), (-math.sin(te), math.cos(te)), h_end),
+                 edge(ri_e, ri_m, a1, a1 / 2), edge(ri_e, ri_m, a1 / 2, 0),
+                 capc(P(0, ri_e), o0, (math.sin(ts), -math.cos(ts)), h_end)]
         fmt = lambda p: f"{p[0]:.2f},{p[1]:.2f}"
-        return f"M{fmt(o0)}" + "".join(f"C{fmt(a)} {fmt(b)} {fmt(e)}" for a, b, e in segs_) + "Z"
+        return f"M{fmt(o0)}" + "".join(f"C{fmt(a)} {fmt(b)} {fmt(e)}" for a, b, e in parts) + "Z"
 
-    # ---- 关键帧:(时间, 起点角, 长度角, 端部厚, 中部厚, 圆头, 不透明度, 玻璃程度)
-    # 参考 iOS:移动时是比条更高的透明胶囊(两端半圆、上下近平行),静止时贴合选中项
-    PAD = 5.0
+    rest_shape = lambda g: (g["span"], sw, sw, 0.0)
 
-    def rest(g, t, o=1.0):
-        return (t, g["s"], g["span"], sw, sw, 0.0, o, 0.0)
+    def swollen(a, b):                                      # 滑行中的胶囊:比圆环高得多、两端半圆
+        stretch = (a["span"] + b["span"]) / 2 + 0.35 * abs(b["mid"] - a["mid"]) + 8
+        return (stretch, sw + 24, sw + 28, 1.0)
 
-    def lifted(g, t, o=1.0):
-        return (t, g["s"] - PAD, g["span"] + 2 * PAD, sw + 22, sw + 26, 1.0, o, 1.0)
-
-    kf = [rest(segs[0], 0.0, 0.0), rest(segs[0], step, 0.0),
-          lifted(segs[0], step + 0.24), rest(segs[0], step + 0.56)]            # 首次出现:鼓一下再贴合
+    EASE, HOLD, HUMP = "0.42 0 0.18 1", "0 0 1 1", "0.35 0 0.35 1"
+    pos = [(0.0, segs[0]["mid"], HOLD)]                    # (时间, 中心角, 进入下一段用的曲线)
+    shp = [(0.0, rest_shape(segs[0]), HOLD)]
+    opa = [(0.0, 0.0), (step, 0.0), (step + 0.2, 1.0)]    # 首次出现:直接淡入在 Java 上,不做缩放
     for k in range(1, M):
         a, b = segs[k - 1], segs[k]; t0 = (k + 1) * step
-        a_end, b_end = a["s"] + a["span"], b["s"] + b["span"]
-        s_mid = a["s"] + 0.35 * (b["s"] - a["s"]) - PAD
-        e_mid = a_end + 0.65 * (b_end - a_end) + PAD
-        ov = min(2.5, 0.08 * b["span"] + 0.8)
-        kf += [rest(a, t0),
-               lifted(a, t0 + 0.14),                                               # 原地鼓起
-               (t0 + 0.32, s_mid, e_mid - s_mid, sw + 26, sw + 30, 1.0, 1.0, 1.0),  # 胶囊状态滑行,略拉伸
-               (t0 + 0.47, b["s"] - PAD + ov, b["span"] + 2 * PAD, sw + 14, sw + 18, 0.8, 1.0, 0.6),  # 略过头、开始回收
-               rest(b, t0 + 0.66)]                                                 # 精确贴合
-    kf += [rest(segs[-1], T - 0.35), rest(segs[-1], T, 0.0)]
+        pos += [(t0, a["mid"], EASE), (t0 + MOVE, b["mid"], HOLD)]
+        shp += [(t0, rest_shape(a), HUMP), (t0 + MOVE * 0.45, swollen(a, b), HUMP), (t0 + MOVE, rest_shape(b), HOLD)]
+    pos.append((T, segs[-1]["mid"], HOLD))
+    shp.append((T, rest_shape(segs[-1]), HOLD))
+    opa += [(T - 0.35, 1.0), (T, 0.0)]
 
-    kt = ";".join(f"{t / T:.5f}" for t, *_ in kf)
-    spl = ";".join(["0.3 0 0.2 1"] * (len(kf) - 1))
-    begin = f"{sweep_end:.2f}s"
-    timing = f'keyTimes="{kt}" dur="{T:.1f}s" begin="{begin}" repeatCount="indefinite"'
-    rot_v = ";".join(f"{s:.3f} {cx} {cy}" for _, s, *_ in kf)
-    d_v = ";".join(shape(sp, he, hm, cp) for _, _, sp, he, hm, cp, _, _ in kf)
-    d0 = shape(kf[0][2], kf[0][3], kf[0][4], kf[0][5])
+    def smil(attr, frames, fmt_v, tag="animate", extra=""):
+        kt = ";".join(f"{t / T:.5f}" for t, *_ in frames)
+        vals = ";".join(fmt_v(f) for f in frames)
+        spl = ";".join(f[2] for f in frames[:-1])
+        return (f'<{tag} attributeName="{attr}" {extra} values="{vals}" keyTimes="{kt}" calcMode="spline" '
+                f'keySplines="{spl}" dur="{T:.1f}s" begin="{sweep_end:.2f}s" repeatCount="indefinite"/>')
 
-    lens_def = (f'<path id="lensShape" d="{d0}" transform="rotate({kf[0][1]:.3f} {cx} {cy})">'
-                f'<animateTransform attributeName="transform" type="rotate" values="{rot_v}" calcMode="spline" '
-                f'keySplines="{spl}" {timing}/>'
-                f'<animate attributeName="d" values="{d_v}" calcMode="spline" keySplines="{spl}" {timing}/></path>')
+    lens_def = (f'<path id="lensShape" d="{shape(*shp[0][1])}" transform="rotate({pos[0][1]:.3f} {cx} {cy})">'
+                + smil("transform", pos, lambda f: f"{f[1]:.3f} {cx} {cy}", "animateTransform", 'type="rotate"')
+                + smil("d", shp, lambda f: shape(*f[1])) + "</path>")
+    opa_anim = (f'<animate attributeName="opacity" values="{";".join(str(o) for _, o in opa)}" '
+                f'keyTimes="{";".join(f"{t / T:.5f}" for t, _ in opa)}" dur="{T:.1f}s" begin="{sweep_end:.2f}s" '
+                'repeatCount="indefinite"/>')
 
-    def lens(extra):
-        return f'<use href="#lensShape" {extra}/>'
+    def rich(hexc):                                         # 预先算好的"透过玻璃"颜色:饱和 ×1.18、提亮 ×1.05
+        h = hexc.lstrip("#"); rr, gg, bb = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        l = 0.2126 * rr + 0.7152 * gg + 0.0722 * bb
+        out_ = [min(1.0, max(0.0, (l + (v - l) * 1.18) * 1.05)) for v in (rr, gg, bb)]
+        return "#" + "".join(f"{round(v * 255):02x}" for v in out_)
 
-    op = ";".join(f"{x[6]}" for x in kf)
-    gl = ";".join(f"{x[7]}" for x in kf)
     tint = "#ffffff" if not dark else "#cfe3ff"
-    full = 'maskUnits="userSpaceOnUse" x="0" y="0" width="320" height="320"'
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" '
            f'font-family="{FONT}" role="img" aria-label="Language share">',
-           '<defs>',
-           '<filter id="glass" filterUnits="userSpaceOnUse" x="0" y="0" width="320" height="320">'
-           '<feGaussianBlur stdDeviation="0.6"/><feColorMatrix type="saturate" values="1.18"/>'
-           '<feComponentTransfer><feFuncR type="linear" slope="1.05"/><feFuncG type="linear" slope="1.05"/>'
-           '<feFuncB type="linear" slope="1.05"/></feComponentTransfer></filter>',
-           '<filter id="shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="320" height="320">'
-           '<feGaussianBlur stdDeviation="4"/></filter>',
-           lens_def,
-           f'<mask id="lens" {full}>' + lens('fill="#fff"') + '</mask>',
-           '</defs>',
+           '<defs>', lens_def, '<clipPath id="lens"><use href="#lensShape"/></clipPath>', '</defs>',
            '<g id="ring">']
-    start = 0.0; rings = []
+    start = 0.0; band = []
     for k, it in enumerate(items, 1):
         seg = it["pct"] / 100 * C; dash_ = max(seg - 2.0, 0.6); rot_ = -90 + start / C * 360
-        rings.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{it["color"]}" stroke-width="{sw}" '
-                     f'stroke-dasharray="{dash_:.2f} {C:.2f}" transform="rotate({rot_:.3f} {cx} {cy})">'
-                     + grow("stroke-dasharray", f"0 {C:.2f}", f"{dash_:.2f} {C:.2f}", 0.2 + 0.12 * (k - 1), 0.7)
-                     + '</circle>')
-        out.append(rings[-1]); start += seg
+        out.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{it["color"]}" stroke-width="{sw}" '
+                   f'stroke-dasharray="{dash_:.2f} {C:.2f}" transform="rotate({rot_:.3f} {cx} {cy})">'
+                   + grow("stroke-dasharray", f"0 {C:.2f}", f"{dash_:.2f} {C:.2f}", 0.2 + 0.12 * (k - 1), 0.7)
+                   + '</circle>')
+        # 放大后的色带:比扇区粗(放大感),又比鼓起的胶囊细(露出上下透明的玻璃)
+        band.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{rich(it["color"])}" '
+                    f'stroke-width="{sw + 10}" stroke-dasharray="{dash_:.2f} {C:.2f}" '
+                    f'transform="rotate({rot_:.3f} {cx} {cy})"/>')
+        start += seg
     out.append('</g>')
-    # 放大后的圆环色带:比静止扇区宽(放大感),又比鼓起的镜片窄(露出上下的玻璃)
-    band = "".join(t.replace(f'stroke-width="{sw}"', f'stroke-width="{sw + 10}"').split("<animate")[0] + "</circle>"
-                   for t in rings)
-    edge_dark = "#000" if not dark else "#fff"
-    out.append(f'<g opacity="0"><animate attributeName="opacity" values="{op}" {timing}/>'
-               f'<g transform="translate(0 3)" filter="url(#shadow)" opacity="{0.24 if not dark else 0.55}">'
-               + lens('fill="#000"') + '</g>'
-               '<g mask="url(#lens)">'
-               f'<rect width="320" height="320" fill="{tint}" opacity="{0.55 if not dark else 0.10}"/>'
-               '<g filter="url(#glass)">' + band + '</g>'
-               f'<rect width="320" height="320" fill="{tint}" opacity="{0.16 if not dark else 0.10}"/></g>'
-               + lens(f'fill="none" stroke="{edge_dark}" stroke-opacity="{0.16 if not dark else 0.30}" stroke-width="2"')
-               + f'<g opacity="0"><animate attributeName="opacity" values="{gl}" calcMode="spline" keySplines="{spl}" {timing}/>'
-               + lens('fill="none" stroke="#6ea8ff" stroke-opacity="0.45" stroke-width="4.5"')
-               + lens('fill="none" stroke="#ff8fb1" stroke-opacity="0.40" stroke-width="2.6"') + '</g>'
-               + lens(f'fill="none" stroke="#fff" stroke-opacity="{0.9 if not dark else 0.6}" stroke-width="1"')
-               + '</g>')
+    hair = "#000" if not dark else "#fff"
+    out.append(f'<g opacity="0">{opa_anim}'
+               '<g clip-path="url(#lens)">'
+               f'<rect width="320" height="320" fill="{tint}" opacity="{0.5 if not dark else 0.07}"/>'
+               + "".join(band)
+               + f'<rect width="320" height="320" fill="{tint}" opacity="{0.14 if not dark else 0.08}"/></g>'
+               # 玻璃边缘:半透明细线,不是实心描边
+               f'<use href="#lensShape" fill="none" stroke="{hair}" stroke-opacity="{0.12 if not dark else 0.22}" stroke-width="1.6"/>'
+               f'<use href="#lensShape" fill="none" stroke="#fff" stroke-opacity="{0.75 if not dark else 0.4}" stroke-width="0.8"/>'
+               '</g>')
     e = 0.25 / T
 
     def label(title, big, sub, dot, windows, base):
@@ -285,7 +268,7 @@ def donut_svg(items, total, n_repos, theme):
                 f'<text x="{cx}" y="{cy + 14}" text-anchor="middle" font-size="36" font-weight="700" '
                 f'fill="{c["fg"]}">{html.escape(big)}</text>'
                 f'<text x="{cx}" y="{cy + 38}" text-anchor="middle" font-size="12" fill="{c["muted"]}">{html.escape(sub)}</text>'
-                f'<animate attributeName="opacity" values="{v}" keyTimes="{kt_}" dur="{T:.1f}s" begin="{begin}" '
+                f'<animate attributeName="opacity" values="{v}" keyTimes="{kt_}" dur="{T:.1f}s" begin="{sweep_end:.2f}s" '
                 'repeatCount="indefinite"/></g>')
 
     out.append(label("All languages", fmt_bytes(total), f"of code · {n_repos} repos", None, [(0, 1 / W)], 1))
