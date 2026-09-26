@@ -352,7 +352,10 @@ def main():
     stats = {"owner": owner, "repos": n_repos, "private_repos": n_private, "total_bytes": total,
              "items": [{k: v for k, v in it.items() if k != "members"} | ({"members": it["members"]} if "members" in it else {})
                        for it in items]}
-    ver = hashlib.sha1((STYLE + json.dumps(stats, sort_keys=True)).encode()).hexdigest()[:8]
+    # 版本号只取决于"主页上看得见的内容"(样式 + README 区块里的名称/百分比/大小/仓库数),
+    # 字节数的细微变化不改版本号 → README 不变 → 机器人不提交
+    block_tpl = readme_block(owner, items, n_repos, "__VER__")
+    ver = hashlib.sha1((STYLE + block_tpl).encode()).hexdigest()[:8]
     for th in THEMES:
         (out / f"lang-donut{th}.svg").write_text(donut_svg(items, total, n_repos, th), encoding="utf-8")
         for i, it in enumerate(items, 1):
@@ -363,7 +366,7 @@ def main():
         a, b = s.find("<!--LANGS:START-->"), s.find("<!--LANGS:END-->")
         if a < 0 or b < 0:
             sys.exit("README markers <!--LANGS:START--> / <!--LANGS:END--> not found")
-        readme.write_text(s[:a] + readme_block(owner, items, n_repos, ver) + s[b + len("<!--LANGS:END-->"):],
+        readme.write_text(s[:a] + block_tpl.replace("__VER__", ver) + s[b + len("<!--LANGS:END-->"):],
                           encoding="utf-8")
     print(f"{owner}: {n_repos} repos ({n_private} private), {fmt_bytes(total)}, {len(items)} rows, v={ver}")
     for it in items:
