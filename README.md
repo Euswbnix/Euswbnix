@@ -25,7 +25,7 @@
 | Project | What it is | Result |
 |:--|:--|:--|
 | [**Machine_translation**](https://github.com/Euswbnix/Machine_translation) | Transformer (Vaswani et al., 2017) from scratch in pure PyTorch, trained on WMT with no pretrained weights | **35.87 BLEU** on newstest2014 en→fr (Big) · 4 checkpoints on [🤗 Hugging Face](https://huggingface.co/euswbnix) |
-| [**Machine-Translation-FT**](https://github.com/Euswbnix/Machine-Translation-FT) | Data quality vs. model capacity: CometKiwi-filtered top 1M of a 30M corpus, then short SFT on the from-scratch checkpoints | 🔨 in progress |
+| [**studentos**](https://github.com/Euswbnix/studentos) | Local-first desktop app (Tauri + Rust, React/TypeScript) that keeps your courses searchable and serves them over MCP to Claude, ChatGPT and Codex | v0.1 beta · read-only · no server, no account |
 | [**DDPM-Diffusion-Model**](https://github.com/Euswbnix/DDPM-Diffusion-Model) | Single-GPU CIFAR-10 diffusion speedrun — a faithful DDPM first, then one change at a time, timed against FID | FID **3.139** (paper: 3.17) in ≤ 9.6 h on one RTX 5090 |
 | [**CSC413_Project**](https://github.com/Euswbnix/CSC413_Project) | Hand-written closed-form continuous-time (CfC) RNN vs. a parameter-matched LSTM for steering-angle regression | 🔨 in progress |
 | [**indicator_light_detection**](https://github.com/Euswbnix/indicator_light_detection) | Dashboard warning-light recognition: YOLOv8s-P2 detector + self-implemented MobileViT-XXS classifier | 123 light classes + a reject class |
