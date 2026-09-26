@@ -1,0 +1,134 @@
+{
+  "owner": "Euswbnix",
+  "repos": 31,
+  "private_repos": 17,
+  "total_bytes": 21303726,
+  "items": [
+    {
+      "name": "Java",
+      "pct": 26.997934539713853,
+      "bytes": 5751566,
+      "repos": 5,
+      "private": 4,
+      "color": "#b07219"
+    },
+    {
+      "name": "Python",
+      "pct": 20.176536254737787,
+      "bytes": 4298354,
+      "repos": 18,
+      "private": 9,
+      "color": "#3572A5"
+    },
+    {
+      "name": "JavaScript",
+      "pct": 17.876741373785975,
+      "bytes": 3808412,
+      "repos": 6,
+      "private": 5,
+      "color": "#f1e05a"
+    },
+    {
+      "name": "Vue",
+      "pct": 9.364113113358668,
+      "bytes": 1994905,
+      "repos": 4,
+      "private": 4,
+      "color": "#41b883"
+    },
+    {
+      "name": "Shell",
+      "pct": 5.912346037495976,
+      "bytes": 1259550,
+      "repos": 10,
+      "private": 7,
+      "color": "#89e051"
+    },
+    {
+      "name": "Rust",
+      "pct": 5.690300372808024,
+      "bytes": 1212246,
+      "repos": 1,
+      "private": 0,
+      "color": "#dea584"
+    },
+    {
+      "name": "TeX",
+      "pct": 4.5435244520137,
+      "bytes": 967940,
+      "repos": 5,
+      "private": 3,
+      "color": "#3D6117"
+    },
+    {
+      "name": "TypeScript",
+      "pct": 3.224285742315687,
+      "bytes": 686893,
+      "repos": 3,
+      "private": 2,
+      "color": "#3178c6"
+    },
+    {
+      "name": "C#",
+      "pct": 2.6434108286972897,
+      "bytes": 563145,
+      "repos": 2,
+      "private": 2,
+      "color": "#7355dd"
+    },
+    {
+      "name": "HTML",
+      "pct": 1.544706310999306,
+      "bytes": 329080,
+      "repos": 9,
+      "private": 7,
+      "color": "#e34c26"
+    },
+    {
+      "name": "Other",
+      "pct": 2.0261009740737372,
+      "bytes": 431635,
+      "color": "#8b949e",
+      "repos": null,
+      "private": null,
+      "members": [
+        [
+          "CSS",
+          0.9605033410587425
+        ],
+        [
+          "PLpgSQL",
+          0.6038661969272417
+        ],
+        [
+          "R",
+          0.21470422591803895
+        ],
+        [
+          "Dockerfile",
+          0.07544689600307478
+        ],
+        [
+          "Makefile",
+          0.07212822771002593
+        ],
+        [
+          "Swift",
+          0.056332868719772305
+        ],
+        [
+          "Batchfile",
+          0.018147060284196298
+        ],
+        [
+          "SCSS",
+          0.01524146527231903
+        ],
+        [
+          "Metal",
+          0.009730692180325639
+        ]
+      ]
+    }
+  ]
+}
