@@ -1,0 +1,142 @@
+{
+  "owner": "Euswbnix",
+  "repos": 42,
+  "private_repos": 26,
+  "total_bytes": 55456660,
+  "items": [
+    {
+      "name": "Python",
+      "pct": 22.8819315840514,
+      "bytes": 12689555,
+      "repos": 29,
+      "private": 19,
+      "color": "#3572A5"
+    },
+    {
+      "name": "Java",
+      "pct": 21.793187689269423,
+      "bytes": 12085774,
+      "repos": 7,
+      "private": 6,
+      "color": "#b07219"
+    },
+    {
+      "name": "JavaScript",
+      "pct": 21.481043034326262,
+      "bytes": 11912669,
+      "repos": 12,
+      "private": 10,
+      "color": "#f1e05a"
+    },
+    {
+      "name": "Shell",
+      "pct": 9.75845462023858,
+      "bytes": 5411713,
+      "repos": 18,
+      "private": 15,
+      "color": "#89e051"
+    },
+    {
+      "name": "Vue",
+      "pct": 6.496299993544509,
+      "bytes": 3602631,
+      "repos": 6,
+      "private": 6,
+      "color": "#41b883"
+    },
+    {
+      "name": "Rust",
+      "pct": 6.382320897075301,
+      "bytes": 3539422,
+      "repos": 1,
+      "private": 0,
+      "color": "#dea584"
+    },
+    {
+      "name": "TypeScript",
+      "pct": 3.4305960726809004,
+      "bytes": 1902494,
+      "repos": 3,
+      "private": 2,
+      "color": "#3178c6"
+    },
+    {
+      "name": "Swift",
+      "pct": 1.9760097344484866,
+      "bytes": 1095829,
+      "repos": 3,
+      "private": 1,
+      "color": "#F05138"
+    },
+    {
+      "name": "C#",
+      "pct": 1.9723510215003934,
+      "bytes": 1093800,
+      "repos": 3,
+      "private": 3,
+      "color": "#7355dd"
+    },
+    {
+      "name": "TeX",
+      "pct": 1.7453990197029539,
+      "bytes": 967940,
+      "repos": 5,
+      "private": 3,
+      "color": "#3D6117"
+    },
+    {
+      "name": "Other",
+      "pct": 2.082406333161788,
+      "bytes": 1154833,
+      "color": "#8b949e",
+      "repos": null,
+      "private": null,
+      "members": [
+        [
+          "PLpgSQL",
+          0.6953375843406364
+        ],
+        [
+          "HTML",
+          0.6235644194944304
+        ],
+        [
+          "CSS",
+          0.5864868169125224
+        ],
+        [
+          "R",
+          0.0824788222009764
+        ],
+        [
+          "Dockerfile",
+          0.03794314334833724
+        ],
+        [
+          "Makefile",
+          0.02770812378531271
+        ],
+        [
+          "PHP",
+          0.009493900281769583
+        ],
+        [
+          "Batchfile",
+          0.006971209589614665
+        ],
+        [
+          "SCSS",
+          0.005855022642907092
+        ],
+        [
+          "Metal",
+          0.0037380541850158306
+        ],
+        [
+          "NSIS",
+          0.002829236380265238
+        ]
+      ]
+    }
+  ]
+}
